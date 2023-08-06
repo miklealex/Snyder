@@ -109,14 +109,19 @@ def bfs_subdivide(interval_x, interval_y, lines, max_depth=6, eps=0.01, boundary
         current = queue.popleft()
         cur_interval_x, cur_interval_y, cur_depth = current["interval_x"], current["interval_y"], current["depth"]
 
-        rectangles.append((cur_interval_x, cur_interval_y))
+        #rectangles.append((cur_interval_x, cur_interval_y))
 
-        if abs(cur_interval_x[0].sup - cur_interval_x[0].inf) < eps and abs(cur_interval_y[0].sup - cur_interval_y[0].inf) < eps:
-            if has_root(cur_interval_x, cur_interval_y):
-                points.append((midpoint(cur_interval_x), midpoint(cur_interval_y)))
-            add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines)
-            continue
+        # if abs(cur_interval_x[0].sup - cur_interval_x[0].inf) < eps and abs(cur_interval_y[0].sup - cur_interval_y[0].inf) < eps:
+        #     if has_root(cur_interval_x, cur_interval_y):
+        #         points.append((midpoint(cur_interval_x), midpoint(cur_interval_y)))
+        #     add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines)
+        #     continue
 
+        if is_globally_parameterizable(cur_interval_x, cur_interval_y):
+                add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines)
+                rectangles.append((cur_interval_x, cur_interval_y))
+                continue
+        
         x_mid = midpoint(cur_interval_x)
         y_mid = midpoint(cur_interval_y)
 
@@ -128,16 +133,21 @@ def bfs_subdivide(interval_x, interval_y, lines, max_depth=6, eps=0.01, boundary
         ]
 
         for sub_x, sub_y in subintervals:
-            if is_globally_parameterizable(sub_x, sub_y) or has_root(sub_x, sub_y):
-                if cur_depth < max_depth:
-                    new_data = {
-                        "interval_x": sub_x,
-                        "interval_y": sub_y,
-                        "depth": cur_depth + 1
-                    }
-                    queue.append(new_data)
+            if has_root(sub_x, sub_y):
+                if not is_globally_parameterizable(sub_x, sub_y):
+                    if cur_depth < max_depth:
+                        new_data = {
+                            "interval_x": sub_x,
+                            "interval_y": sub_y,
+                            "depth": cur_depth + 1
+                        }
+                        queue.append(new_data)
+                    else:
+                        add_lines(sub_x, sub_y, boundary_eps, lines)
+                        rectangles.append((sub_x, sub_y))
                 else:
                     add_lines(sub_x, sub_y, boundary_eps, lines)
+                    rectangles.append((sub_x, sub_y))
 
     return points, rectangles
 
