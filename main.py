@@ -97,34 +97,56 @@ def add_lines(interval_x, interval_y, boundary_eps, lines):
     
     return False
 
-# Recursive subdivision based on global parameterizability
-def subdivide(interval_x, interval_y, lines, depth = 1, max_depth = 6, eps=0.01, boundary_eps=1e-5):
-    rectangles = [(interval_x, interval_y)]  # Store current interval as a rectangle
+from collections import deque
+
+def bfs_subdivide(interval_x, interval_y, lines, max_depth=6, eps=0.01, boundary_eps=1e-5):
+    rectangles = []
     points = []
 
-    if abs(interval_x[0].sup - interval_x[0].inf) < eps and abs(interval_y[0].sup - interval_y[0].inf) < eps:
-        if has_root(interval_x, interval_y):
-            points.append((midpoint(interval_x), midpoint(interval_y)))
-        add_lines(interval_x, interval_y, boundary_eps, lines)
-        return points, rectangles
+    # Initial interval to start BFS
+    initial_data = {
+        "interval_x": interval_x,
+        "interval_y": interval_y,
+        "depth": 1
+    }
+    queue = deque([initial_data])
 
-    x_mid = midpoint(interval_x)
-    y_mid = midpoint(interval_y)
+    while queue:
+        current = queue.popleft()
+        cur_interval_x, cur_interval_y, cur_depth = current["interval_x"], current["interval_y"], current["depth"]
 
-    top_left = (interval([interval_x[0].inf, x_mid]), interval([interval_y[0].inf, y_mid]))
-    top_right = (interval([x_mid, interval_x[0].sup]), interval([interval_y[0].inf, y_mid]))
-    bottom_left = (interval([interval_x[0].inf, x_mid]), interval([y_mid, interval_y[0].sup]))
-    bottom_right = (interval([x_mid, interval_x[0].sup]), interval([y_mid, interval_y[0].sup]))
+        rectangles.append((cur_interval_x, cur_interval_y))
 
-    for subdiv in [top_left, top_right, bottom_left, bottom_right]:
-        if is_globally_parameterizable(subdiv[0], subdiv[1]) or has_root(subdiv[0], subdiv[1]):
-            if depth >= max_depth:
-                if add_lines(interval_x, interval_y, boundary_eps, lines) == True:
-                    return [], rectangles
-            new_points, new_rectangles = subdivide(subdiv[0], subdiv[1], lines, depth + 1, max_depth, eps, boundary_eps)
-            points.extend(new_points)
-            rectangles.extend(new_rectangles)
+        if abs(cur_interval_x[0].sup - cur_interval_x[0].inf) < eps and abs(cur_interval_y[0].sup - cur_interval_y[0].inf) < eps:
+            if has_root(cur_interval_x, cur_interval_y):
+                points.append((midpoint(cur_interval_x), midpoint(cur_interval_y)))
+            add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines)
+            continue
+
+        x_mid = midpoint(cur_interval_x)
+        y_mid = midpoint(cur_interval_y)
+
+        subintervals = [
+            (interval([cur_interval_x[0].inf, x_mid]), interval([cur_interval_y[0].inf, y_mid])),
+            (interval([x_mid, cur_interval_x[0].sup]), interval([cur_interval_y[0].inf, y_mid])),
+            (interval([cur_interval_x[0].inf, x_mid]), interval([y_mid, cur_interval_y[0].sup])),
+            (interval([x_mid, cur_interval_x[0].sup]), interval([y_mid, cur_interval_y[0].sup]))
+        ]
+
+        for sub_x, sub_y in subintervals:
+            if is_globally_parameterizable(sub_x, sub_y) or has_root(sub_x, sub_y):
+                if cur_depth < max_depth:
+                    new_data = {
+                        "interval_x": sub_x,
+                        "interval_y": sub_y,
+                        "depth": cur_depth + 1
+                    }
+                    queue.append(new_data)
+                else:
+                    add_lines(sub_x, sub_y, boundary_eps, lines)
+
     return points, rectangles
+
 
 # Define the main function
 def main():
@@ -133,7 +155,7 @@ def main():
     
     lines = [] 
 
-    points, rectangles = subdivide(x_interval, y_interval, lines)
+    points, rectangles = bfs_subdivide(x_interval, y_interval, lines)
     
     fig, ax = plt.subplots()
     #print(lines)
@@ -149,14 +171,6 @@ def main():
         (x1, y1), (x2, y2) = line
         plt.plot([x1, x2], [y1, y2], color='b')
     
-    # Plot the points
-    #if points:
-    #    x_values, y_values = zip(*points)
-    #    plt.scatter(x_values, y_values, color='r')  # Color set to red for clarity against rectangles
-    #else:
-    #    print("No points found!")
-
-    #plt.gca().set_aspect('equal', adjustable='box')
     plt.show()
 
 main()
