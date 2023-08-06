@@ -2,6 +2,7 @@ from interval import interval
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from interval import imath
+import math
 
 # Define the implicit function
 def implicit_function(x, y):
@@ -47,22 +48,15 @@ def binary_search_intersection(f, a, b, eps_search=1e-7):
     print("Returning NONE - This point shouldn't be ideally reached")
     return None
 
+def jacobian_determinant(x, y):
+    part_x = 2*x - 2*math.pi*imath.sin(2*math.pi*x) + 4*math.pi*x*imath.cos(2*math.pi*x**2)*imath.cos(2*math.pi*y**2)
+    part_y = 2*y + 2*math.pi*imath.cos(2*math.pi*y) - 4*math.pi*y**2*imath.sin(2*math.pi*x**2)*imath.sin(2*math.pi*y**2)
+    return part_x * part_y
 
-def is_globally_parameterizable_x(interval_x, interval_y):
-    fx1 = implicit_function(interval_x[0].inf, midpoint(interval_y))
-    fx2 = implicit_function(interval_x[0].sup, midpoint(interval_y))
-    return fx1 * fx2 <= interval[0]
-
-def is_globally_parameterizable_y(interval_x, interval_y):
-    fy1 = implicit_function(midpoint(interval_x), interval_y[0].inf)
-    fy2 = implicit_function(midpoint(interval_x), interval_y[0].sup)
-    return fy1 * fy2 <= interval[0]
-
-# Check if the interval is globally parameterizable
 def is_globally_parameterizable(interval_x, interval_y):
-    # Check boundaries
-    
-    return is_globally_parameterizable_x(interval_x, interval_y) or is_globally_parameterizable_y(interval_x, interval_y)
+    det_J = jacobian_determinant(interval_x, interval_y)
+    return 0 not in det_J
+
 
 # Determine if the function has a root in the interval
 def has_root(interval_x, interval_y):
