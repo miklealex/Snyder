@@ -4,6 +4,34 @@ import matplotlib.patches as patches
 from interval import imath
 import math
 from collections import deque
+import sys
+from matplotlib import colors
+
+class MultiPlotViewer:
+    def __init__(self, fig, ax_list):
+        self.fig = fig
+        self.ax_list = ax_list
+        self.index = 0
+
+        # Display the first plot initially
+        self.update()
+
+    def update(self):
+        # Hide all plots
+        for ax in self.ax_list:
+            ax.set_visible(False)
+        
+        # Display the current plot
+        self.ax_list[self.index].set_visible(True)
+        plt.draw()
+
+    def next_plot(self, event):
+        if event.key == "right":
+            self.index = (self.index + 1) % len(self.ax_list)
+            self.update()
+        elif event.key == "left":
+            self.index = (self.index - 1) % len(self.ax_list)
+            self.update()
 
 # Define the implicit function
 def implicit_function(x, y):
@@ -48,15 +76,6 @@ def binary_search_intersection(f, a, b, eps_search=1e-5):
     # This shouldn't be reached ideally.
     print("Returning NONE - This point shouldn't be ideally reached")
     return None
-
-def jacobian_determinant(x, y):
-    part_x = 2*x - 2*math.pi*imath.sin(2*math.pi*x) + 4*math.pi*x*imath.cos(2*math.pi*x**2)*imath.cos(2*math.pi*y**2)
-    part_y = 2*y + 2*math.pi*imath.cos(2*math.pi*y) - 4*math.pi*y**2*imath.sin(2*math.pi*x**2)*imath.sin(2*math.pi*y**2)
-    return part_x * part_y
-
-# def is_globally_parameterizable(interval_x, interval_y):
-#     det_J = jacobian_determinant(interval_x, interval_y)
-#     return 0 not in det_J
 
 def partial_derivative_x(x, y):
     return 2*x - 2*math.pi*imath.sin(2*math.pi*x) + 4*math.pi*x*imath.cos(2*math.pi*x**2)*imath.cos(2*math.pi*y**2)
@@ -119,9 +138,10 @@ def add_lines(interval_x, interval_y, boundary_eps, lines):
     #print(intersections)
     return []
 
-def bfs_subdivide(interval_x, interval_y, lines, max_depth=8, eps=0.01, boundary_eps=1e-5):
+def bfs_subdivide(interval_x, interval_y, lines, boundary_eps=1e-5):
     rectangles = []
     points = []
+    depth_rectangles = {} # Store rectangles per depth
 
     # Initial interval to start BFS
     initial_data = {
@@ -132,37 +152,46 @@ def bfs_subdivide(interval_x, interval_y, lines, max_depth=8, eps=0.01, boundary
     queue = deque([initial_data])
     interval_sides = {}
 
+    final_intervals = []
+
     while queue:
         current = queue.popleft()
         cur_interval_x, cur_interval_y, cur_depth = current["interval_x"], current["interval_y"], current["depth"]
-        #print("Interval [", cur_interval_x, cur_interval_y)
+
+        if cur_depth not in depth_rectangles:
+            depth_rectangles[cur_depth] = []
+            depth_rectangles[cur_depth].extend(final_intervals)
+        depth_rectangles[cur_depth].append((cur_interval_x, cur_interval_y))
 
         if is_globally_parameterizable(cur_interval_x, cur_interval_y):
             intersected_sides = add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines)
             if intersected_sides:
                         interval_sides[(cur_interval_x, cur_interval_y)] = intersected_sides
             rectangles.append((cur_interval_x, cur_interval_y))
+            final_intervals.append((cur_interval_x, cur_interval_y))
             continue
 
         subintervals = []
         global_x = is_globally_parameterizable_x(cur_interval_x, cur_interval_y)
         global_y = is_globally_parameterizable_y(cur_interval_x, cur_interval_y)
-        #print("global_x = ", global_x)
-        #print("global_y = ", global_y)
+
         x_mid = midpoint(cur_interval_x)
         y_mid = midpoint(cur_interval_y)
 
         if global_x and not global_y:
+            print("global_x and not global_y")
             subintervals = [
                 (cur_interval_x, interval([cur_interval_y[0].inf, y_mid])),
                 (cur_interval_x, interval([y_mid, cur_interval_y[0].sup]))
             ]
         elif global_y and not global_x:
+            print("global_y and not global_x")
             subintervals = [
                 (interval([cur_interval_x[0].inf, x_mid]), cur_interval_y),
                 (interval([x_mid, cur_interval_x[0].sup]), cur_interval_y)
             ]
         elif not global_x and not global_y:
+            #print("global_y and not global_x")
             subintervals = [
                 (interval([cur_interval_x[0].inf, x_mid]), interval([cur_interval_y[0].inf, y_mid])),
                 (interval([x_mid, cur_interval_x[0].sup]), interval([cur_interval_y[0].inf, y_mid])),
@@ -173,45 +202,62 @@ def bfs_subdivide(interval_x, interval_y, lines, max_depth=8, eps=0.01, boundary
         for sub_x, sub_y in subintervals:
             if has_root(sub_x, sub_y):
                 if not is_globally_parameterizable(sub_x, sub_y):
-                    #if cur_depth < max_depth:
                     new_data = {
                         "interval_x": sub_x,
                         "interval_y": sub_y,
                         "depth": cur_depth + 1
                     }
                     queue.append(new_data)
-                    # else:
-                    #     add_lines(sub_x, sub_y, boundary_eps, lines)
-                    #     rectangles.append((sub_x, sub_y))
-                    #     print("MAX DEPTH REACHED")
                 else:
                     intersected_sides = add_lines(sub_x, sub_y, boundary_eps, lines)
+                    final_intervals.append((sub_x, sub_y))
                     if intersected_sides:
                         interval_sides[(sub_x, sub_y)] = intersected_sides
                     rectangles.append((sub_x, sub_y))
 
-    return points, rectangles, interval_sides
+    return points, rectangles, interval_sides, depth_rectangles
 
+def plot_by_depth(depth_rectangles):
+    fig = plt.figure(figsize=(8, 8))
+    ax_list = []
 
+    max_depth = max(depth_rectangles.keys())
 
-# Define the main function
-def main():
-    x_interval = interval[-1.1, 1.1]
-    y_interval = interval[-1.1, 1.1]
-    
-    lines = [] 
+    for depth in range(1, max_depth + 1):
+        ax = fig.add_subplot(1, 1, 1)
+        ax_list.append(ax)
+        
+        for rect in depth_rectangles[depth]:
+            x_ivl, y_ivl = rect
+            rect_width = x_ivl[0].sup - x_ivl[0].inf
+            rect_height = y_ivl[0].sup - y_ivl[0].inf
 
-    points, rectangles, interval_sides = bfs_subdivide(x_interval, y_interval, lines)
-    
+            face_rgba = colors.to_rgba('grey', alpha=0.2)
+            edge_rgba = colors.to_rgba('black', alpha=1.0)
+
+            ax.add_patch(patches.Rectangle((x_ivl[0].inf, y_ivl[0].inf), rect_width, rect_height, fill=True, facecolor=face_rgba, edgecolor=edge_rgba))
+        
+        ax.set_title(f"Depth {depth}")
+        ax.set_xlim([-1.1, 1.1])
+        ax.set_ylim([-1.1, 1.1])
+        ax.set_visible(False)
+
+    viewer = MultiPlotViewer(fig, ax_list)
+    fig.canvas.mpl_connect('key_press_event', viewer.next_plot)
+    plt.show()
+
+def final_plot(rectangles, interval_sides, lines):
     fig, ax = plt.subplots()
-    #print(lines)
 
     # Plot the rectangles
     for rect in rectangles:
         x_ivl, y_ivl = rect
         rect_width = x_ivl[0].sup - x_ivl[0].inf
         rect_height = y_ivl[0].sup - y_ivl[0].inf
-        ax.add_patch(patches.Rectangle((x_ivl[0].inf, y_ivl[0].inf), rect_width, rect_height, fill=False))
+
+        face_rgba = colors.to_rgba('grey', alpha=0.2)
+        edge_rgba = colors.to_rgba('black', alpha=1.0)
+        ax.add_patch(patches.Rectangle((x_ivl[0].inf, y_ivl[0].inf), rect_width, rect_height, fill=True, facecolor=face_rgba, edgecolor=edge_rgba))
 
         sides_to_highlight = interval_sides.get(rect, [])
         for side in sides_to_highlight:
@@ -228,6 +274,31 @@ def main():
         (x1, y1), (x2, y2) = line
         plt.plot([x1, x2], [y1, y2], color='b')
     
+    ax.set_xlim([-1.1, 1.1])
+    ax.set_ylim([-1.1, 1.1])
     plt.show()
+
+# Define the main function
+def main():
+
+    show_mode = "final"
+    if len(sys.argv) == 2 and sys.argv[1] == "depth":
+        show_mode = "depth"
+
+    x_interval = interval[-1.1, 1.1]
+    y_interval = interval[-1.1, 1.1]
+    
+    lines = [] 
+
+    points, rectangles, interval_sides, depth_rectangles = bfs_subdivide(x_interval, y_interval, lines)
+
+    match show_mode:
+        case "final":
+            final_plot(rectangles, interval_sides, lines)
+        case "depth":
+            plot_by_depth(depth_rectangles)
+
+    
+    
 
 main()
