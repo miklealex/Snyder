@@ -80,37 +80,44 @@ def is_globally_parameterizable(interval_x, interval_y):
 def has_root(interval_x, interval_y):
     return 0 in implicit_function(interval_x, interval_y)
 
+#Note! x and y are flipped for some reason when displaying on the plot
 def add_lines(interval_x, interval_y, boundary_eps, lines):
     intersections = []
+    intersected_sides = []  # This list stores the sides the function crosses
 
     # Check top and bottom horizontal boundaries
     for x_boundary in [interval_x[0].inf, interval_x[0].sup]:
         f = lambda y: implicit_function(x_boundary, y)
         intersection = binary_search_intersection(f, interval_y[0].inf, interval_y[0].sup, boundary_eps)
         if intersection is not None:
-            print("intersection y found")
+            # Determine which boundary (top or bottom) has been intersected
+            #Changing to right and left because coordinates are flipped
+            side = 'right' if x_boundary == interval_x[0].sup else 'left'
+            intersected_sides.append(side)
             intersections.append((x_boundary, intersection))
+            
+    # We continue only if two intersections were found in the previous loop
     if len(intersections) == 2:
         lines.append((intersections[0], intersections[1]))
-        return True
+        return intersected_sides
     
-    #intersections.clear()
     # Check left and right vertical boundaries
     for y_boundary in [interval_y[0].inf, interval_y[0].sup]:
         f = lambda x: implicit_function(x, y_boundary)
         intersection = binary_search_intersection(f, interval_x[0].inf, interval_x[0].sup, boundary_eps)
         if intersection is not None:
-            print("intersection x found")
+            # Determine which boundary (left or right) has been intersected
+            #Changing to top and bottom because coordinates are flipped
+            side = 'top' if y_boundary == interval_y[0].sup else 'bottom'
+            intersected_sides.append(side)
             intersections.append((intersection, y_boundary))
 
     if len(intersections) == 2:
         lines.append((intersections[0], intersections[1]))
-        return True
-    
-    print("Didn't find intersections for ", interval_x, interval_y)
-    print("Intersections amount = ", len(intersections))
-    print(intersections)
-    return False
+        return intersected_sides
+
+    #print(intersections)
+    return []
 
 def bfs_subdivide(interval_x, interval_y, lines, max_depth=8, eps=0.01, boundary_eps=1e-5):
     rectangles = []
@@ -123,6 +130,7 @@ def bfs_subdivide(interval_x, interval_y, lines, max_depth=8, eps=0.01, boundary
         "depth": 1
     }
     queue = deque([initial_data])
+    interval_sides = {}
 
     while queue:
         current = queue.popleft()
@@ -130,7 +138,9 @@ def bfs_subdivide(interval_x, interval_y, lines, max_depth=8, eps=0.01, boundary
         #print("Interval [", cur_interval_x, cur_interval_y)
 
         if is_globally_parameterizable(cur_interval_x, cur_interval_y):
-            add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines)
+            intersected_sides = add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines)
+            if intersected_sides:
+                        interval_sides[(cur_interval_x, cur_interval_y)] = intersected_sides
             rectangles.append((cur_interval_x, cur_interval_y))
             continue
 
@@ -175,10 +185,12 @@ def bfs_subdivide(interval_x, interval_y, lines, max_depth=8, eps=0.01, boundary
                     #     rectangles.append((sub_x, sub_y))
                     #     print("MAX DEPTH REACHED")
                 else:
-                    add_lines(sub_x, sub_y, boundary_eps, lines)
+                    intersected_sides = add_lines(sub_x, sub_y, boundary_eps, lines)
+                    if intersected_sides:
+                        interval_sides[(sub_x, sub_y)] = intersected_sides
                     rectangles.append((sub_x, sub_y))
 
-    return points, rectangles
+    return points, rectangles, interval_sides
 
 
 
@@ -189,7 +201,7 @@ def main():
     
     lines = [] 
 
-    points, rectangles = bfs_subdivide(x_interval, y_interval, lines)
+    points, rectangles, interval_sides = bfs_subdivide(x_interval, y_interval, lines)
     
     fig, ax = plt.subplots()
     #print(lines)
@@ -200,6 +212,17 @@ def main():
         rect_width = x_ivl[0].sup - x_ivl[0].inf
         rect_height = y_ivl[0].sup - y_ivl[0].inf
         ax.add_patch(patches.Rectangle((x_ivl[0].inf, y_ivl[0].inf), rect_width, rect_height, fill=False))
+
+        sides_to_highlight = interval_sides.get(rect, [])
+        for side in sides_to_highlight:
+            if side == 'top':
+                plt.plot([x_ivl[0].inf, x_ivl[0].sup], [y_ivl[0].sup, y_ivl[0].sup], color='r')
+            elif side == 'bottom':
+                plt.plot([x_ivl[0].inf, x_ivl[0].sup], [y_ivl[0].inf, y_ivl[0].inf], color='r')
+            elif side == 'left':
+                plt.plot([x_ivl[0].inf, x_ivl[0].inf], [y_ivl[0].inf, y_ivl[0].sup], color='r')
+            elif side == 'right':
+                plt.plot([x_ivl[0].sup, x_ivl[0].sup], [y_ivl[0].inf, y_ivl[0].sup], color='r')
 
     for line in lines:
         (x1, y1), (x2, y2) = line
