@@ -6,6 +6,7 @@ import math
 from collections import deque
 import sys
 from matplotlib import colors
+from collections import OrderedDict 
 
 class MultiPlotViewer:
     def __init__(self, fig, ax_list):
@@ -100,43 +101,89 @@ def has_root(interval_x, interval_y):
     return 0 in implicit_function(interval_x, interval_y)
 
 #Note! x and y are flipped for some reason when displaying on the plot
-def add_lines(interval_x, interval_y, boundary_eps, lines):
+def add_lines(interval_x, interval_y, boundary_eps, lines, global_par_coordinate):
     intersections = []
-    intersected_sides = []  # This list stores the sides the function crosses
+    intersected_sides = []
 
+    # 1. Calculate all intersection points with the boundary.
     # Check top and bottom horizontal boundaries
     for x_boundary in [interval_x[0].inf, interval_x[0].sup]:
         f = lambda y: implicit_function(x_boundary, y)
-        intersection = binary_search_intersection(f, interval_y[0].inf, interval_y[0].sup, boundary_eps)
-        if intersection is not None:
-            # Determine which boundary (top or bottom) has been intersected
-            #Changing to right and left because coordinates are flipped
+        intersection_points = []
+        if global_par_coordinate == "xy":
+            point = binary_search_intersection(f, interval_y[0].inf, interval_y[0].sup, boundary_eps)
+            if point is not None:
+                intersection_points.append(point)
+        else:
+            point = binary_search_intersection(f, interval_y[0].inf, midpoint(interval_y), boundary_eps)
+            if point is not None:
+                intersection_points.append(point)
+            point = binary_search_intersection(f, midpoint(interval_y), interval_y[0].sup, boundary_eps)
+            if point is not None:
+                intersection_points.append(point)
+        if len(intersection_points) > 0:
             side = 'right' if x_boundary == interval_x[0].sup else 'left'
             intersected_sides.append(side)
-            intersections.append((x_boundary, intersection))
-            
-    # We continue only if two intersections were found in the previous loop
-    if len(intersections) == 2:
-        lines.append((intersections[0], intersections[1]))
-        return intersected_sides
-    
+            for pt in intersection_points:
+                intersections.append((x_boundary, pt))
+
     # Check left and right vertical boundaries
     for y_boundary in [interval_y[0].inf, interval_y[0].sup]:
         f = lambda x: implicit_function(x, y_boundary)
-        intersection = binary_search_intersection(f, interval_x[0].inf, interval_x[0].sup, boundary_eps)
-        if intersection is not None:
-            # Determine which boundary (left or right) has been intersected
-            #Changing to top and bottom because coordinates are flipped
+        intersection_points = []
+        if global_par_coordinate == "xy":
+            point = binary_search_intersection(f, interval_x[0].inf, interval_x[0].sup, boundary_eps)
+            if point is not None:
+                intersection_points.append(point)
+        else:
+            point = binary_search_intersection(f, interval_x[0].inf, midpoint(interval_x), boundary_eps)
+            if point is not None:
+                intersection_points.append(point)
+            point = binary_search_intersection(f, midpoint(interval_x), interval_x[0].sup, boundary_eps)
+            if point is not None:
+                intersection_points.append(point)
+        if len(intersection_points) > 0:
             side = 'top' if y_boundary == interval_y[0].sup else 'bottom'
             intersected_sides.append(side)
-            intersections.append((intersection, y_boundary))
+            for pt in intersection_points:
+                intersections.append((pt, y_boundary))
+    
+    intersections = list(OrderedDict.fromkeys(intersections)) 
+    # 2. Sort the intersections
+    sorted_intersections = sorted(intersections, key=lambda point: point[0 if global_par_coordinate == 'x' else 1])
 
-    if len(intersections) == 2:
-        lines.append((intersections[0], intersections[1]))
-        return intersected_sides
+    # 3. Calculate the midpoint between each pair of sorted intersection points.
+    for i in range(len(sorted_intersections) - 1):
+        x1, y1 = sorted_intersections[i]
+        x2, y2 = sorted_intersections[i + 1]
 
-    #print(intersections)
-    return []
+        if global_par_coordinate == 'x':
+            mid_x = (x1 + x2) / 2
+            f = lambda y: implicit_function(mid_x, y)
+            intersection = binary_search_intersection(f, interval_y[0].inf, interval_y[0].sup, boundary_eps)
+        else:  # parameter == 'y'
+            mid_y = (y1 + y2) / 2
+            f = lambda x: implicit_function(x, mid_y)
+            intersection = binary_search_intersection(f, interval_x[0].inf, interval_x[0].sup, boundary_eps)
+
+        # 4. Check if the implicit function intersects with an imaginary line at this midpoint.
+        if intersection:
+            # 5. If it does, connect the two intersection points with a line.
+            lines.append((sorted_intersections[i], sorted_intersections[i + 1]))
+
+    return intersected_sides
+
+def get_global_parameterization_coordinate(current_interval_x, current_interval_y):
+    global_x = is_globally_parameterizable_x(current_interval_x, current_interval_y)
+    global_y = is_globally_parameterizable_y(current_interval_x, current_interval_y)
+
+    if global_x or global_y:
+        if not global_y:
+            return "x"
+        elif global_x:
+            return "xy"
+        return "y"
+    return ""
 
 def bfs_subdivide(interval_x, interval_y, lines, boundary_eps=1e-5):
     rectangles = []
@@ -163,8 +210,12 @@ def bfs_subdivide(interval_x, interval_y, lines, boundary_eps=1e-5):
             depth_rectangles[cur_depth].extend(final_intervals)
         depth_rectangles[cur_depth].append((cur_interval_x, cur_interval_y))
 
+        global_x = is_globally_parameterizable_x(cur_interval_x, cur_interval_y)
+        global_y = is_globally_parameterizable_y(cur_interval_x, cur_interval_y)
+
         if is_globally_parameterizable(cur_interval_x, cur_interval_y):
-            intersected_sides = add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines)
+            global_par_coordinate = get_global_parameterization_coordinate(cur_interval_x, cur_interval_y)
+            intersected_sides = add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines, global_par_coordinate)
             if intersected_sides:
                         interval_sides[(cur_interval_x, cur_interval_y)] = intersected_sides
             rectangles.append((cur_interval_x, cur_interval_y))
@@ -172,8 +223,6 @@ def bfs_subdivide(interval_x, interval_y, lines, boundary_eps=1e-5):
             continue
 
         subintervals = []
-        global_x = is_globally_parameterizable_x(cur_interval_x, cur_interval_y)
-        global_y = is_globally_parameterizable_y(cur_interval_x, cur_interval_y)
 
         x_mid = midpoint(cur_interval_x)
         y_mid = midpoint(cur_interval_y)
@@ -209,7 +258,8 @@ def bfs_subdivide(interval_x, interval_y, lines, boundary_eps=1e-5):
                     }
                     queue.append(new_data)
                 else:
-                    intersected_sides = add_lines(sub_x, sub_y, boundary_eps, lines)
+                    global_par_coordinate = get_global_parameterization_coordinate(sub_x, sub_y)
+                    intersected_sides = add_lines(sub_x, sub_y, boundary_eps, lines, global_par_coordinate)
                     final_intervals.append((sub_x, sub_y))
                     if intersected_sides:
                         interval_sides[(sub_x, sub_y)] = intersected_sides
