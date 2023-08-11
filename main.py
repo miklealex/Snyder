@@ -78,19 +78,53 @@ def binary_search_intersection(f, a, b, eps_search=1e-5):
     print("Returning NONE - This point shouldn't be ideally reached")
     return None
 
+def hansen_greenberg_intersection(f, a, b, eps_search=1e-5):
+    intervals = [(a, b)]
+    results = []
+
+    while intervals:
+        a, b = intervals.pop()
+        f_a, f_b = f(a), f(b)
+
+        # If signs are the same, no root in this interval
+        if (f_a[0].inf > 0 and f_b[0].inf > 0) or (f_a[0].sup < 0 and f_b[0].sup < 0):
+            continue
+
+        mid = (a + b) / 2
+
+        # If this interval's size is smaller than the desired precision
+        if abs(b - a) < eps_search:
+            results.append(mid)
+            continue
+
+        f_mid = f(mid)
+
+        # If 0 is in the function value at the midpoint, keep this as one of the roots
+        if 0 in f_mid:
+            results.append(mid)
+
+        # Split the interval in half and add to the queue
+        intervals.append((a, mid))
+        intervals.append((mid, b))
+
+    return results if results else None
+
+
 def partial_derivative_x(x, y):
+    #return 2*x
     return 2*x - 2*math.pi*imath.sin(2*math.pi*x) + 4*math.pi*x*imath.cos(2*math.pi*x**2)*imath.cos(2*math.pi*y**2)
 
 def partial_derivative_y(x, y):
+    #return 2*y
     return 2*y + 2*math.pi*imath.cos(2*math.pi*y) - 4*math.pi*y**2*imath.sin(2*math.pi*x**2)*imath.sin(2*math.pi*y**2)
 
 def is_globally_parameterizable_x(interval_x, interval_y):
-    partial_y = partial_derivative_y(interval_x, interval_y)
-    return 0 not in partial_y
-
-def is_globally_parameterizable_y(interval_x, interval_y):
     partial_x = partial_derivative_x(interval_x, interval_y)
     return 0 not in partial_x
+
+def is_globally_parameterizable_y(interval_x, interval_y):
+    partial_y = partial_derivative_y(interval_x, interval_y)
+    return 0 not in partial_y
 
 def is_globally_parameterizable(interval_x, interval_y):
     return is_globally_parameterizable_x(interval_x, interval_y) or is_globally_parameterizable_y(interval_x, interval_y)
@@ -110,6 +144,12 @@ def add_lines(interval_x, interval_y, boundary_eps, lines, global_par_coordinate
     for x_boundary in [interval_x[0].inf, interval_x[0].sup]:
         f = lambda y: implicit_function(x_boundary, y)
         intersection_points = []
+        # points = hansen_greenberg_intersection(f, interval_y[0].inf, interval_y[0].sup, boundary_eps)
+        # if points is not None:
+        #     if len(points) > 1:
+        #         print("More that 1 intersection. ", interval_x, interval_y)
+        #         return [], True
+        #     intersection_points.append(points[0])
         if global_par_coordinate == "xy":
             point = binary_search_intersection(f, interval_y[0].inf, interval_y[0].sup, boundary_eps)
             if point is not None:
@@ -122,6 +162,8 @@ def add_lines(interval_x, interval_y, boundary_eps, lines, global_par_coordinate
             if point is not None:
                 intersection_points.append(point)
         if len(intersection_points) > 0:
+            if len(intersection_points) > 1:
+                return [], True
             side = 'right' if x_boundary == interval_x[0].sup else 'left'
             intersected_sides.append(side)
             for pt in intersection_points:
@@ -131,6 +173,12 @@ def add_lines(interval_x, interval_y, boundary_eps, lines, global_par_coordinate
     for y_boundary in [interval_y[0].inf, interval_y[0].sup]:
         f = lambda x: implicit_function(x, y_boundary)
         intersection_points = []
+        # points = hansen_greenberg_intersection(f, interval_x[0].inf, interval_x[0].sup, boundary_eps)
+        # if points is not None:
+        #     if len(points) > 1:
+        #         print("More that 1 intersection. ", interval_x, interval_y)
+        #         return [], True
+        #     intersection_points.append(points[0])
         if global_par_coordinate == "xy":
             point = binary_search_intersection(f, interval_x[0].inf, interval_x[0].sup, boundary_eps)
             if point is not None:
@@ -143,6 +191,8 @@ def add_lines(interval_x, interval_y, boundary_eps, lines, global_par_coordinate
             if point is not None:
                 intersection_points.append(point)
         if len(intersection_points) > 0:
+            if len(intersection_points) > 1:
+                return [], True
             side = 'top' if y_boundary == interval_y[0].sup else 'bottom'
             intersected_sides.append(side)
             for pt in intersection_points:
@@ -171,7 +221,7 @@ def add_lines(interval_x, interval_y, boundary_eps, lines, global_par_coordinate
             # 5. If it does, connect the two intersection points with a line.
             lines.append((sorted_intersections[i], sorted_intersections[i + 1]))
 
-    return intersected_sides
+    return intersected_sides, False
 
 def get_global_parameterization_coordinate(current_interval_x, current_interval_y):
     global_x = is_globally_parameterizable_x(current_interval_x, current_interval_y)
@@ -215,12 +265,13 @@ def bfs_subdivide(interval_x, interval_y, lines, boundary_eps=1e-5):
 
         if is_globally_parameterizable(cur_interval_x, cur_interval_y):
             global_par_coordinate = get_global_parameterization_coordinate(cur_interval_x, cur_interval_y)
-            intersected_sides = add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines, global_par_coordinate)
-            if intersected_sides:
-                        interval_sides[(cur_interval_x, cur_interval_y)] = intersected_sides
-            rectangles.append((cur_interval_x, cur_interval_y))
-            final_intervals.append((cur_interval_x, cur_interval_y))
-            continue
+            intersected_sides, should_still_subdivide = add_lines(cur_interval_x, cur_interval_y, boundary_eps, lines, global_par_coordinate)
+            if not should_still_subdivide:
+                if intersected_sides:
+                            interval_sides[(cur_interval_x, cur_interval_y)] = intersected_sides
+                rectangles.append((cur_interval_x, cur_interval_y))
+                final_intervals.append((cur_interval_x, cur_interval_y))
+                continue
 
         subintervals = []
 
@@ -228,19 +279,16 @@ def bfs_subdivide(interval_x, interval_y, lines, boundary_eps=1e-5):
         y_mid = midpoint(cur_interval_y)
 
         if global_x and not global_y:
-            print("global_x and not global_y")
             subintervals = [
                 (cur_interval_x, interval([cur_interval_y[0].inf, y_mid])),
                 (cur_interval_x, interval([y_mid, cur_interval_y[0].sup]))
             ]
         elif global_y and not global_x:
-            print("global_y and not global_x")
             subintervals = [
                 (interval([cur_interval_x[0].inf, x_mid]), cur_interval_y),
                 (interval([x_mid, cur_interval_x[0].sup]), cur_interval_y)
             ]
         elif not global_x and not global_y:
-            #print("global_y and not global_x")
             subintervals = [
                 (interval([cur_interval_x[0].inf, x_mid]), interval([cur_interval_y[0].inf, y_mid])),
                 (interval([x_mid, cur_interval_x[0].sup]), interval([cur_interval_y[0].inf, y_mid])),
@@ -259,11 +307,24 @@ def bfs_subdivide(interval_x, interval_y, lines, boundary_eps=1e-5):
                     queue.append(new_data)
                 else:
                     global_par_coordinate = get_global_parameterization_coordinate(sub_x, sub_y)
-                    intersected_sides = add_lines(sub_x, sub_y, boundary_eps, lines, global_par_coordinate)
-                    final_intervals.append((sub_x, sub_y))
-                    if intersected_sides:
-                        interval_sides[(sub_x, sub_y)] = intersected_sides
-                    rectangles.append((sub_x, sub_y))
+                    intersected_sides, should_still_subdivide = add_lines(sub_x, sub_y, boundary_eps, lines, global_par_coordinate)
+                    if should_still_subdivide:
+                        new_data = {
+                            "interval_x": sub_x,
+                            "interval_y": sub_y,
+                            "depth": cur_depth + 1
+                        }
+                        queue.append(new_data)
+                    else:
+                        final_intervals.append((sub_x, sub_y))
+                        if intersected_sides:
+                            interval_sides[(sub_x, sub_y)] = intersected_sides
+                        rectangles.append((sub_x, sub_y))
+
+                        if cur_depth + 1 not in depth_rectangles:
+                            depth_rectangles[cur_depth + 1] = []
+                            depth_rectangles[cur_depth + 1].extend(final_intervals)
+                        depth_rectangles[cur_depth + 1].append((sub_x, sub_y))
 
     return points, rectangles, interval_sides, depth_rectangles
 
@@ -347,8 +408,5 @@ def main():
             final_plot(rectangles, interval_sides, lines)
         case "depth":
             plot_by_depth(depth_rectangles)
-
-    
-    
 
 main()
